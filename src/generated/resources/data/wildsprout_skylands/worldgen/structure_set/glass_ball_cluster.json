@@ -1,0 +1,14 @@
+{
+  "placement": {
+    "type": "minecraft:random_spread",
+    "salt": 59283750,
+    "separation": 12,
+    "spacing": 32
+  },
+  "structures": [
+    {
+      "structure": "wildsprout_skylands:glass_ball_cluster",
+      "weight": 1
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "itemGroup.wildsprout_skylands": "Example Mod Tab",
+  "block.wildsprout_skylands.example_block": "Example Block",
+  "item.wildsprout_skylands.example_item": "Example Item",
+
+  "wildsprout_skylands.configuration.title": "Wildsprout: Skylands Configs",
+  "wildsprout_skylands.configuration.section.wildsprout_skylands.common.toml": "Wildsprout: Skylands Configs",
+  "wildsprout_skylands.configuration.section.wildsprout_skylands.common.toml.title": "Wildsprout: Skylands Configs",
+  "wildsprout_skylands.configuration.items": "Item List",
+  "wildsprout_skylands.configuration.logDirtBlock": "Log Dirt Block",
+  "wildsprout_skylands.configuration.magicNumberIntroduction": "Magic Number Text",
+  "wildsprout_skylands.configuration.magicNumber": "Magic Number"
+}
