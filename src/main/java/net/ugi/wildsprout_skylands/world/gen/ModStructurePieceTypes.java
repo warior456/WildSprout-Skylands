@@ -17,6 +17,10 @@ public class ModStructurePieceTypes {
             STRUCTURE_PIECE_TYPES.register("floating_island_piece",
                     () -> (StructurePieceType.ContextlessType) FloatingIslandGenerator.Piece::new);
 
+    public static final Supplier<StructurePieceType> FLOATING_ISLAND_BRIDGE =
+            STRUCTURE_PIECE_TYPES.register("floating_island_bridge",
+                    () -> (StructurePieceType.ContextlessType) FloatingIslandGenerator.BridgePiece::new);
+
     public static final Supplier<StructurePieceType> GLASS_BALL_CLUSTER_PIECE =
             STRUCTURE_PIECE_TYPES.register("glass_ball_cluster_piece",
                     () -> (StructurePieceType.ContextlessType) GlassBallClusterGenerator.Piece::new);
