@@ -10,13 +10,11 @@ import net.minecraft.world.level.levelgen.structure.TerrainAdjustment;
 import net.ugi.wildsprout_skylands.WildsproutSkylands;
 import net.ugi.wildsprout_skylands.tags.ModTags;
 import net.ugi.wildsprout_skylands.world.gen.structure.FloatingIslandStructure;
-import net.ugi.wildsprout_skylands.world.gen.structure.GlassBallClusterStructure;
 
 import java.util.Map;
 
 public class ModStructures {
     public static final ResourceKey<Structure> FLOATING_ISLAND = registerKey("floating_island");
-    public static final ResourceKey<Structure> GLASS_BALL_CLUSTER = registerKey("glass_ball_cluster");
 
     public static void bootstrap(BootstrapContext<Structure> context) {
         var biomeSet = context.lookup(Registries.BIOME);
@@ -30,14 +28,6 @@ public class ModStructures {
                 )
         ));
 
-        context.register(GLASS_BALL_CLUSTER, new GlassBallClusterStructure(
-                new Structure.StructureSettings(
-                        biomeSet.getOrThrow(ModTags.Biome.HAS_GLASS_BALL_CLUSTER),
-                        Map.of(),
-                        GenerationStep.Decoration.RAW_GENERATION,
-                        TerrainAdjustment.NONE
-                )
-        ));
     }
 
     private static ResourceKey<Structure> registerKey(String name) {

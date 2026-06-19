@@ -2,5 +2,5 @@
   "type": "wildsprout_skylands:floating_island",
   "biomes": "#wildsprout_skylands:has_structure/floating_island",
   "spawn_overrides": {},
-  "step": "surface_structures"
+  "step": "raw_generation"
 }

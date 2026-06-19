@@ -22,7 +22,6 @@ public class ModBiomeTagProvider extends BiomeTagsProvider {
         this.tag(ModTags.Biome.HAS_FLOATING_ISLAND)
                 .addTag(BiomeTags.IS_OVERWORLD);
 
-        this.tag(ModTags.Biome.HAS_GLASS_BALL_CLUSTER)
-                .addTag(BiomeTags.IS_OVERWORLD);
+
     }
 }

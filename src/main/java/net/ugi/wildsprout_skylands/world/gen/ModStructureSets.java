@@ -28,15 +28,6 @@ public class ModStructureSets {
                 )
         ));
 
-        context.register(GLASS_BALL_CLUSTER, new StructureSet(
-                structureGetter.getOrThrow(ModStructures.GLASS_BALL_CLUSTER),
-                new RandomSpreadStructurePlacement(
-                        32, // spacing
-                        12, // separation
-                        RandomSpreadType.LINEAR,
-                        59283750 // salt
-                )
-        ));
     }
 
     private static ResourceKey<StructureSet> registerKey(String name) {

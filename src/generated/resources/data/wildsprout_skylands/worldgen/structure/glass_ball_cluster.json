@@ -1,6 +1,0 @@
-{
-  "type": "wildsprout_skylands:glass_ball_cluster",
-  "biomes": "#wildsprout_skylands:has_structure/glass_ball_cluster",
-  "spawn_overrides": {},
-  "step": "surface_structures"
-}

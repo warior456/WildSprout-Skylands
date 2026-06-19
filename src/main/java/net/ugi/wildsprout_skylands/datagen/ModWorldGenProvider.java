@@ -7,8 +7,6 @@ import net.minecraft.data.PackOutput;
 import net.neoforged.neoforge.common.data.DatapackBuiltinEntriesProvider;
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
 import net.ugi.wildsprout_skylands.WildsproutSkylands;
-import net.ugi.wildsprout_skylands.world.gen.ModBiomeModifiers;
-import net.ugi.wildsprout_skylands.world.gen.ModConfiguredFeatures;
 import net.ugi.wildsprout_skylands.world.gen.ModPlacedFeatures;
 import net.ugi.wildsprout_skylands.world.gen.ModStructureSets;
 import net.ugi.wildsprout_skylands.world.gen.ModStructures;
@@ -18,11 +16,10 @@ import java.util.concurrent.CompletableFuture;
 
 public class ModWorldGenProvider extends DatapackBuiltinEntriesProvider {
     public static final RegistrySetBuilder BUILDER = new RegistrySetBuilder()
-            .add(Registries.CONFIGURED_FEATURE, ModConfiguredFeatures::bootstrap)
+            //.add(Registries.CONFIGURED_FEATURE, ModConfiguredFeatures::bootstrap)
             .add(Registries.PLACED_FEATURE, ModPlacedFeatures::bootstrap)
             .add(Registries.STRUCTURE, ModStructures::bootstrap)
-            .add(Registries.STRUCTURE_SET, ModStructureSets::bootstrap)
-            .add(NeoForgeRegistries.Keys.BIOME_MODIFIERS, ModBiomeModifiers::bootstrap);
+            .add(Registries.STRUCTURE_SET, ModStructureSets::bootstrap);
 
     public ModWorldGenProvider(PackOutput output, CompletableFuture<HolderLookup.Provider> registries) {
         super(output, registries, BUILDER, Set.of(WildsproutSkylands.MODID));

@@ -8,6 +8,8 @@ import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureType;
 import net.minecraft.world.level.levelgen.structure.pieces.StructurePiecesBuilder;
+import net.ugi.wildsprout_skylands.Config;
+import net.ugi.wildsprout_skylands.WildsproutSkylands;
 import net.ugi.wildsprout_skylands.world.gen.ModStructureTypes;
 
 import java.util.ArrayList;
@@ -16,18 +18,25 @@ import java.util.Optional;
 
 public class FloatingIslandStructure extends Structure {
     public static final MapCodec<FloatingIslandStructure> CODEC = simpleCodec(FloatingIslandStructure::new);
-    private static final int MIN_Y = 205;
-    private static final int MAX_Y = 262;
+    private static final int MIN_Y = Config.FLOATING_ISLANDS_MIN_Y.getAsInt();
+    private static final int MAX_Y = Config.FLOATING_ISLANDS_MAX_Y.getAsInt();
 
     public FloatingIslandStructure(Structure.StructureSettings settings) {
         super(settings);
     }
 
+    //step 1: place the structurestarts
     @Override
     public Optional<GenerationStub> findGenerationPoint(GenerationContext context) {
+        //random chunk position first point
         int startX = context.chunkPos().getMinBlockX() + context.random().nextInt(16);
         int startZ = context.chunkPos().getMinBlockZ() + context.random().nextInt(16);
         int startY = MIN_Y + context.random().nextInt((MAX_Y - MIN_Y) + 1);
+        if(context.heightAccessor().isOutsideBuildHeight(startY)){
+            WildsproutSkylands.LOGGER.warn("FloatingIslandStructure: coordinate {} {} {} is outside build height, skipping generation.", startX, startY, startZ);
+            WildsproutSkylands.LOGGER.warn("check config fo max and minimum height");
+            return Optional.empty();
+        }
         long baseSeed = context.random().nextLong();
         BlockPos start = new BlockPos(startX, startY, startZ);
 
@@ -91,7 +100,7 @@ public class FloatingIslandStructure extends Structure {
                 BoundingBox box = FloatingIslandGenerator.Piece.createBoundingBox(ix, iy, iz, diameter);
                 builder.addPiece(new FloatingIslandGenerator.Piece(
                         ix, iy, iz, shapeSeed,
-                        FloatingIslandGenerator.Piece.IslandType.BIG, diameter, box));
+                        IslandPiece.IslandType.BIG, diameter, box));
             }
 
             // ── Bridges between consecutive big islands ────────────────────
@@ -134,7 +143,7 @@ public class FloatingIslandStructure extends Structure {
                 BoundingBox box = FloatingIslandGenerator.Piece.createBoundingBox(mx, my, mz, diameter);
                 builder.addPiece(new FloatingIslandGenerator.Piece(
                         mx, my, mz, shapeSeed,
-                        FloatingIslandGenerator.Piece.IslandType.MEDIUM, diameter, box));
+                        IslandPiece.IslandType.MEDIUM, diameter, box));
 
                 int width = 1 + rand.nextInt(3);
                 createAndAddBridge(builder, anchor[0], anchor[1], anchor[2], anchor[3],
@@ -172,7 +181,7 @@ public class FloatingIslandStructure extends Structure {
                 BoundingBox box = FloatingIslandGenerator.Piece.createBoundingBox(sx, sy, sz, diameter);
                 builder.addPiece(new FloatingIslandGenerator.Piece(
                         sx, sy, sz, shapeSeed,
-                        FloatingIslandGenerator.Piece.IslandType.SMALL, diameter, box));
+                        IslandPiece.IslandType.SMALL, diameter, box));
             }
         }));
     }
