@@ -1,5 +1,5 @@
 # WildSprout: Skylands
-A mod that improves the vanilla plains biome
+A mod that adds floating islands meant for use in modpacks with create aeronautics to have some extra spice in normal worlds
 
 ## FEATURES
 - sky islands
@@ -8,8 +8,7 @@ A mod that improves the vanilla plains biome
 - all vanilla biomes
 
 ## CONFIGURATION
-This mod has a config in the config folder,
-and can tags can be configured in datapack
+- wip
 (description WIP)
 
 ## License
