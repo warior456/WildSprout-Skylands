@@ -11,10 +11,10 @@ import net.minecraft.world.level.levelgen.structure.pieces.StructurePiecesBuilde
 import net.ugi.wildsprout_skylands.Config;
 import net.ugi.wildsprout_skylands.WildsproutSkylands;
 import net.ugi.wildsprout_skylands.world.gen.ModStructureTypes;
+import net.ugi.wildsprout_skylands.world.gen.structure.piece.FloatingIslandBridgePiece;
+import net.ugi.wildsprout_skylands.world.gen.structure.piece.FloatingIslandPiece;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 public class FloatingIslandStructure extends Structure {
     public static final MapCodec<FloatingIslandStructure> CODEC = simpleCodec(FloatingIslandStructure::new);
@@ -25,165 +25,237 @@ public class FloatingIslandStructure extends Structure {
         super(settings);
     }
 
-    //step 1: place the structurestarts
     @Override
     public Optional<GenerationStub> findGenerationPoint(GenerationContext context) {
-        //random chunk position first point
         int startX = context.chunkPos().getMinBlockX() + context.random().nextInt(16);
         int startZ = context.chunkPos().getMinBlockZ() + context.random().nextInt(16);
         int startY = MIN_Y + context.random().nextInt((MAX_Y - MIN_Y) + 1);
-        if(context.heightAccessor().isOutsideBuildHeight(startY)){
+
+        if (context.heightAccessor().isOutsideBuildHeight(startY)) {
             WildsproutSkylands.LOGGER.warn("FloatingIslandStructure: coordinate {} {} {} is outside build height, skipping generation.", startX, startY, startZ);
-            WildsproutSkylands.LOGGER.warn("check config fo max and minimum height");
+            WildsproutSkylands.LOGGER.warn("check config for max and minimum height");
             return Optional.empty();
         }
+
         long baseSeed = context.random().nextLong();
         BlockPos start = new BlockPos(startX, startY, startZ);
 
         return Optional.of(new GenerationStub(start, builder -> {
             RandomSource rand = RandomSource.create(baseSeed);
-            // Store island info as [x, y, z, diameter]
-            List<int[]> allIslands = new ArrayList<>(); // all placed islands for overlap check
-            List<int[]> bigIslands = new ArrayList<>();
 
-            // Generation boundary: 128 block radius, minus 28 block buffer = 100 effective
-            final int MAX_RADIUS = 100;
-            final int MAX_PLACEMENT_ATTEMPTS = 20;
+            List<int[]> allIslands = new ArrayList<>();
+            List<int[]> connectableIslands = new ArrayList<>(); // Combined Big & Medium islands
 
-            // ── Big islands (1-3) ──────────────────────────────────────────
-            int bigCount = 1 + rand.nextInt(3);
-            for (int i = 0; i < bigCount; i++) {
-                int diameter = 25 + rand.nextInt(16); // 25-40
-                int ix, iy, iz;
+            int bigCount = rand.nextIntBetweenInclusive(1,4);
+            int mediumCount = rand.nextIntBetweenInclusive(3,9);
+            int smallCount = rand.nextIntBetweenInclusive(5,14);
 
-                if (i == 0) {
-                    // Center island at origin
-                    ix = startX;
-                    iy = startY;
-                    iz = startZ;
-                } else {
-                    // Try to place without overlapping existing islands
-                    // todo replace with more uniform version
-                    int bestX = startX, bestZ = startZ, bestY = startY;
-                    boolean placed = false;
-                    for (int attempt = 0; attempt < MAX_PLACEMENT_ATTEMPTS; attempt++) {
-                        double angle = rand.nextDouble() * Math.PI * 2.0;
-                        int dist = 50 + rand.nextInt(31);
-                        int cx = startX + Mth.floor(Math.cos(angle) * dist);
-                        int cz = startZ + Mth.floor(Math.sin(angle) * dist);
-                        int cy = Mth.clamp(startY + (-15 + rand.nextInt(31)), MIN_Y, MAX_Y);
+            // 1. Generate core islands
+            generateBigIslands(builder, rand, baseSeed, startX, startY, startZ, bigCount, allIslands, connectableIslands);
 
-                        // Clamp to boundary
-                        cx = clampToBoundary(cx, startX, MAX_RADIUS, diameter);
-                        cz = clampToBoundary(cz, startZ, MAX_RADIUS, diameter);
+            // 2. Generate medium islands (they can now anchor to ANY connectable island, not just big ones)
+            generateMediumIslands(builder, rand, baseSeed, startX, startZ, bigCount, mediumCount, allIslands, connectableIslands);
 
-                        if (!overlapsAny(cx, cz, diameter, allIslands)) {
-                            bestX = cx;
-                            bestZ = cz;
-                            bestY = cy;
-                            placed = true;
-                            break;
-                        }
-                    }
-                    if (!placed)
-                        continue; // skip this island if we can't place it
-                    ix = bestX;
-                    iy = bestY;
-                    iz = bestZ;
-                }
+            // 3. Wire them together dynamically 
+            generateBridges(builder, rand, connectableIslands, allIslands);
 
-                long shapeSeed = baseSeed + (341873128712L * i);
-                int[] info = new int[] { ix, iy, iz, diameter };
-                bigIslands.add(info);
-                allIslands.add(info);
+            // 4. Generate decorative small islands
+            generateSmallIslands(builder, rand, baseSeed, startX, startY, startZ, bigCount, mediumCount, smallCount, allIslands);
+        }));
+    }
 
-                BoundingBox box = FloatingIslandGenerator.Piece.createBoundingBox(ix, iy, iz, diameter);
-                builder.addPiece(new FloatingIslandGenerator.Piece(
-                        ix, iy, iz, shapeSeed,
-                        IslandPiece.IslandType.BIG, diameter, box));
+// ── Extraction Methods ──────────────────────────────────────────
+
+    private void generateBigIslands(StructurePiecesBuilder builder, RandomSource rand, long baseSeed, int startX, int startY, int startZ, int count, List<int[]> allIslands, List<int[]> connectableIslands) {
+        for (int i = 0; i < count; i++) {
+            int diameter = 25 + rand.nextInt(16);
+            int[] pos;
+
+            if (i == 0) {
+                pos = new int[]{startX, startY, startZ};
+            } else {
+                pos = tryFindPosition(rand, startX, startY, startZ, startX, startZ, diameter, 50, 80, 15, allIslands);
             }
 
-            // ── Bridges between consecutive big islands ────────────────────
-            for (int i = 1; i < bigIslands.size(); i++) {
-                int[] a = bigIslands.get(i - 1);
-                int[] b = bigIslands.get(i);
+            if (pos == null) continue;
+
+            long shapeSeed = baseSeed + (341873128712L * i);
+            int[] info = new int[]{pos[0], pos[1], pos[2], diameter};
+
+            connectableIslands.add(info);
+            allIslands.add(info);
+            addIslandPiece(builder, pos, diameter, shapeSeed, IslandType.BIG);
+        }
+    }
+
+    private void generateMediumIslands(StructurePiecesBuilder builder, RandomSource rand, long baseSeed, int startX, int startZ, int bigCount, int count, List<int[]> allIslands, List<int[]> connectableIslands) {
+        if (connectableIslands.isEmpty()) return;
+
+        for (int i = 0; i < count; i++) {
+            int diameter = 12 + rand.nextInt(9);
+            // Anchor to ANY existing connectable island (Big or Medium) to spread the network
+            int[] anchor = connectableIslands.get(rand.nextInt(connectableIslands.size()));
+
+            int[] pos = tryFindPosition(rand, anchor[0], anchor[1], anchor[2], startX, startZ, diameter, 25, 45, 10, allIslands);
+            if (pos == null) continue;
+
+            long shapeSeed = baseSeed + (341873128712L * (bigCount + i));
+            int[] info = new int[]{pos[0], pos[1], pos[2], diameter};
+
+            connectableIslands.add(info);
+            allIslands.add(info);
+            addIslandPiece(builder, pos, diameter, shapeSeed, IslandType.MEDIUM);
+        }
+    }
+
+    private void generateSmallIslands(StructurePiecesBuilder builder, RandomSource rand, long baseSeed, int startX, int startY, int startZ, int bigCount, int mediumCount, int count, List<int[]> allIslands) {
+        for (int i = 0; i < count; i++) {
+            int diameter = 3 + rand.nextInt(5);
+            int[] pos = tryFindPosition(rand, startX, startY, startZ, startX, startZ, diameter, 30, 100, 20, allIslands);
+            if (pos == null) continue;
+
+            long shapeSeed = baseSeed + (341873128712L * (bigCount + mediumCount + i));
+            allIslands.add(new int[]{pos[0], pos[1], pos[2], diameter});
+            addIslandPiece(builder, pos, diameter, shapeSeed, IslandType.SMALL);
+        }
+    }
+
+// ── Bridge Generation Logic ─────────────────────────────────────
+
+    private void generateBridges(StructurePiecesBuilder builder, RandomSource rand, List<int[]> connectableIslands, List<int[]> allIslands) {
+        if (connectableIslands.size() < 2) return;
+
+        List<int[]> connected = new ArrayList<>();
+        List<int[]> unconnected = new ArrayList<>(connectableIslands);
+
+        // Start the network with the first island
+        connected.add(unconnected.remove(0));
+
+        // Phase 1: Minimum Spanning Tree (Guarantees every island is accessible)
+        for (int[] target : unconnected) {
+            boolean linked = false;
+
+            // Shuffle connected pool to pick random attachment points instead of hub-and-spoke
+            List<int[]> potentialAnchors = new ArrayList<>(connected);
+            Collections.shuffle(potentialAnchors, new Random(rand.nextLong()));
+
+            for (int[] anchor : potentialAnchors) {
+                if (!doesBridgeIntersect(anchor, target, allIslands)) {
+                    int width = 1 + rand.nextInt(3);
+                    createAndAddBridge(builder, anchor[0], anchor[1], anchor[2], anchor[3], target[0], target[1], target[2], target[3], width);
+                    linked = true;
+                    break;
+                }
+            }
+
+            // Fallback: If all paths clip through other islands, force a connection to the closest anchor
+            if (!linked) {
+                int[] fallbackAnchor = getClosestIsland(target, connected);
                 int width = 1 + rand.nextInt(3);
+                createAndAddBridge(builder, fallbackAnchor[0], fallbackAnchor[1], fallbackAnchor[2], fallbackAnchor[3], target[0], target[1], target[2], target[3], width);
+            }
+
+            connected.add(target);
+        }
+
+        // Phase 2: Extra Webbing (Adds random extra bridges for non-linear exploration)
+        int extraBridges = rand.nextInt(connectableIslands.size() / 2 + 1);
+        for (int i = 0; i < extraBridges; i++) {
+            int[] a = connectableIslands.get(rand.nextInt(connectableIslands.size()));
+            int[] b = connectableIslands.get(rand.nextInt(connectableIslands.size()));
+
+            if (a != b && !doesBridgeIntersect(a, b, allIslands)) {
+                int width = 1 + rand.nextInt(2);
                 createAndAddBridge(builder, a[0], a[1], a[2], a[3], b[0], b[1], b[2], b[3], width);
             }
+        }
+    }
 
-            // ── Medium islands (2-5) ───────────────────────────────────────
-            int mediumCount = 2 + rand.nextInt(4);
-            for (int i = 0; i < mediumCount; i++) {
-                int diameter = 12 + rand.nextInt(9); // 12-20
-                int[] anchor = bigIslands.get(rand.nextInt(bigIslands.size()));
+// ── Math & Utility Methods ──────────────────────────────────────
 
-                int mx = 0, my = 0, mz = 0;
-                boolean placed = false;
-                for (int attempt = 0; attempt < MAX_PLACEMENT_ATTEMPTS; attempt++) {
-                    double angle = rand.nextDouble() * Math.PI * 2.0;
-                    int dist = 25 + rand.nextInt(21);
-                    mx = anchor[0] + Mth.floor(Math.cos(angle) * dist);
-                    mz = anchor[2] + Mth.floor(Math.sin(angle) * dist);
-                    my = Mth.clamp(anchor[1] + (-10 + rand.nextInt(21)), MIN_Y, MAX_Y);
+    private boolean doesBridgeIntersect(int[] a, int[] b, List<int[]> allIslands) {
+        for (int[] island : allIslands) {
+            // Don't check collisions against the two islands the bridge is actively connecting
+            if (island == a || island == b) continue;
 
-                    mx = clampToBoundary(mx, startX, MAX_RADIUS, diameter);
-                    mz = clampToBoundary(mz, startZ, MAX_RADIUS, diameter);
+            double radius = (island[3] / 2.0) + 2.0; // Added 2 block buffer zone
 
-                    if (!overlapsAny(mx, mz, diameter, allIslands)) {
-                        placed = true;
-                        break;
-                    }
-                }
-                if (!placed)
-                    continue;
+            // 3D Line Segment to Point Distance Calculation
+            double dx = b[0] - a[0];
+            double dy = b[1] - a[1];
+            double dz = b[2] - a[2];
+            double lenSq = dx * dx + dy * dy + dz * dz;
 
-                long shapeSeed = baseSeed + (341873128712L * (bigCount + i));
-                allIslands.add(new int[] { mx, my, mz, diameter });
+            if (lenSq == 0) continue;
 
-                BoundingBox box = FloatingIslandGenerator.Piece.createBoundingBox(mx, my, mz, diameter);
-                builder.addPiece(new FloatingIslandGenerator.Piece(
-                        mx, my, mz, shapeSeed,
-                        IslandPiece.IslandType.MEDIUM, diameter, box));
+            double cx = island[0] - a[0];
+            double cy = island[1] - a[1];
+            double cz = island[2] - a[2];
 
-                int width = 1 + rand.nextInt(3);
-                createAndAddBridge(builder, anchor[0], anchor[1], anchor[2], anchor[3],
-                        mx, my, mz, diameter, width);
+            // Find closest point (t) on the line segment
+            double t = (cx * dx + cy * dy + cz * dz) / lenSq;
+            t = Math.max(0, Math.min(1, t)); // Clamp between island A (0) and island B (1)
+
+            // Calculate 3D coordinates of that closest point
+            double px = a[0] + t * dx;
+            double py = a[1] + t * dy;
+            double pz = a[2] + t * dz;
+
+            // Check if that point is inside the island's radius
+            double distSq = (island[0] - px) * (island[0] - px) +
+                    (island[1] - py) * (island[1] - py) +
+                    (island[2] - pz) * (island[2] - pz);
+
+            if (distSq < (radius * radius)) {
+                return true; // The bridge passes through this island!
             }
+        }
+        return false;
+    }
 
-            // ── Small islands (3-10) — mostly unconnected ─────────────────
-            int smallCount = 3 + rand.nextInt(8);
-            for (int i = 0; i < smallCount; i++) {
-                int diameter = 3 + rand.nextInt(5); // 3-7
+    private int[] getClosestIsland(int[] target, List<int[]> candidates) {
+        int[] closest = candidates.get(0);
+        double minDistSq = Double.MAX_VALUE;
 
-                int sx = 0, sz = 0, sy = 0;
-                boolean placed = false;
-                for (int attempt = 0; attempt < MAX_PLACEMENT_ATTEMPTS; attempt++) {
-                    double angle = rand.nextDouble() * Math.PI * 2.0;
-                    int dist = 30 + rand.nextInt(71);
-                    sx = startX + Mth.floor(Math.cos(angle) * dist);
-                    sz = startZ + Mth.floor(Math.sin(angle) * dist);
-                    sy = Mth.clamp(startY + (-20 + rand.nextInt(41)), MIN_Y, MAX_Y);
-
-                    sx = clampToBoundary(sx, startX, MAX_RADIUS, diameter);
-                    sz = clampToBoundary(sz, startZ, MAX_RADIUS, diameter);
-
-                    if (!overlapsAny(sx, sz, diameter, allIslands)) {
-                        placed = true;
-                        break;
-                    }
-                }
-                if (!placed)
-                    continue;
-
-                long shapeSeed = baseSeed + (341873128712L * (bigCount + mediumCount + i));
-                allIslands.add(new int[] { sx, sy, sz, diameter });
-
-                BoundingBox box = FloatingIslandGenerator.Piece.createBoundingBox(sx, sy, sz, diameter);
-                builder.addPiece(new FloatingIslandGenerator.Piece(
-                        sx, sy, sz, shapeSeed,
-                        IslandPiece.IslandType.SMALL, diameter, box));
+        for (int[] candidate : candidates) {
+            double distSq = Math.pow(target[0] - candidate[0], 2) +
+                    Math.pow(target[1] - candidate[1], 2) +
+                    Math.pow(target[2] - candidate[2], 2);
+            if (distSq < minDistSq) {
+                minDistSq = distSq;
+                closest = candidate;
             }
-        }));
+        }
+        return closest;
+    }
+
+    private int[] tryFindPosition(RandomSource rand, int anchorX, int anchorY, int anchorZ, int startX, int startZ, int diameter, int minRadius, int maxRadius, int ySpread, List<int[]> allIslands) {
+        final int MAX_RADIUS = 128;
+        final int MAX_ATTEMPTS = 5;
+
+        // Create a safe buffer zone so the island never clips outside the max bounds
+        double safeBoundary = MAX_RADIUS - (diameter / 2.0) - 5;
+
+        for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+            double angle = rand.nextDouble() * Math.PI * 2.0;
+
+            // Math.sqrt() ensures a perfectly uniform distribution across the circle's area
+            double dist = safeBoundary * Math.sqrt(rand.nextDouble());
+
+            int cx = startX + Mth.floor(Math.cos(angle) * dist);
+            int cz = startZ + Mth.floor(Math.sin(angle) * dist);
+            int cy = Mth.clamp(anchorY + (-ySpread + rand.nextInt((ySpread * 2) + 1)), MIN_Y, MAX_Y);
+
+            if (!overlapsAny(cx, cz, diameter, allIslands)) {
+                return new int[]{cx, cy, cz};
+            }
+        }
+        return null;
+    }
+
+    private void addIslandPiece(StructurePiecesBuilder builder, int[] pos, int diameter, long shapeSeed, IslandType type) {
+        BoundingBox box = FloatingIslandPiece.createBoundingBox(pos[0], pos[1], pos[2], diameter);
+        builder.addPiece(new FloatingIslandPiece(pos[0], pos[1], pos[2], shapeSeed, type, diameter, box));
     }
 
     /**
@@ -208,16 +280,6 @@ public class FloatingIslandStructure extends Structure {
         return false;
     }
 
-    /**
-     * Clamps a coordinate so the island (including its radius) stays within
-     * the allowed generation boundary from the structure center.
-     */
-    private static int clampToBoundary(int coord, int center, int maxRadius, int diameter) {
-        int halfDiameter = diameter / 2;
-        int minCoord = center - maxRadius + halfDiameter;
-        int maxCoord = center + maxRadius - halfDiameter;
-        return Mth.clamp(coord, minCoord, maxCoord);
-    }
 
     /**
      * Computes edge-to-edge bridge endpoints and adds a BridgePiece.
@@ -252,8 +314,8 @@ public class FloatingIslandStructure extends Structure {
                 toY,
                 toZ - Mth.floor(nz * toOffset));
 
-        BoundingBox bridgeBox = FloatingIslandGenerator.BridgePiece.createBoundingBox(bridgeStart, bridgeEnd);
-        builder.addPiece(new FloatingIslandGenerator.BridgePiece(bridgeStart, bridgeEnd, width, bridgeBox));
+        BoundingBox bridgeBox = FloatingIslandBridgePiece.createBoundingBox(bridgeStart, bridgeEnd);
+        builder.addPiece(new FloatingIslandBridgePiece(bridgeStart, bridgeEnd, width, bridgeBox));
     }
 
     @Override
