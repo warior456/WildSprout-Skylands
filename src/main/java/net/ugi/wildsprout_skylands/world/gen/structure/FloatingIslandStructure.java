@@ -18,8 +18,8 @@ import java.util.*;
 
 public class FloatingIslandStructure extends Structure {
     public static final MapCodec<FloatingIslandStructure> CODEC = simpleCodec(FloatingIslandStructure::new);
-    private static final int MIN_Y = Config.FLOATING_ISLANDS_MIN_Y.getAsInt();
-    private static final int MAX_Y = Config.FLOATING_ISLANDS_MAX_Y.getAsInt();
+    private static final int MIN_Y = 205;//Config.FLOATING_ISLANDS_MIN_Y.getAsInt();
+    private static final int MAX_Y = 270;//Config.FLOATING_ISLANDS_MAX_Y.getAsInt();
 
     public FloatingIslandStructure(Structure.StructureSettings settings) {
         super(settings);
@@ -74,7 +74,7 @@ public class FloatingIslandStructure extends Structure {
             if (i == 0) {
                 pos = new int[]{startX, startY, startZ};
             } else {
-                pos = tryFindPosition(rand, startX, startY, startZ, startX, startZ, diameter, 50, 80, 15, allIslands);
+                pos = tryFindPosition(rand, startX, startY, startZ, startX, startZ, diameter, 50, 80, 20, allIslands);
             }
 
             if (pos == null) continue;
@@ -96,7 +96,7 @@ public class FloatingIslandStructure extends Structure {
             // Anchor to ANY existing connectable island (Big or Medium) to spread the network
             int[] anchor = connectableIslands.get(rand.nextInt(connectableIslands.size()));
 
-            int[] pos = tryFindPosition(rand, anchor[0], anchor[1], anchor[2], startX, startZ, diameter, 25, 45, 10, allIslands);
+            int[] pos = tryFindPosition(rand, anchor[0], anchor[1], anchor[2], startX, startZ, diameter, 25, 45, 30, allIslands);
             if (pos == null) continue;
 
             long shapeSeed = baseSeed + (341873128712L * (bigCount + i));
@@ -111,7 +111,7 @@ public class FloatingIslandStructure extends Structure {
     private void generateSmallIslands(StructurePiecesBuilder builder, RandomSource rand, long baseSeed, int startX, int startY, int startZ, int bigCount, int mediumCount, int count, List<int[]> allIslands) {
         for (int i = 0; i < count; i++) {
             int diameter = 3 + rand.nextInt(5);
-            int[] pos = tryFindPosition(rand, startX, startY, startZ, startX, startZ, diameter, 30, 100, 20, allIslands);
+            int[] pos = tryFindPosition(rand, startX, startY, startZ, startX, startZ, diameter, 30, 100, 35, allIslands);
             if (pos == null) continue;
 
             long shapeSeed = baseSeed + (341873128712L * (bigCount + mediumCount + i));
@@ -131,44 +131,66 @@ public class FloatingIslandStructure extends Structure {
         // Start the network with the first island
         connected.add(unconnected.remove(0));
 
-        // Phase 1: Minimum Spanning Tree (Guarantees every island is accessible)
-        for (int[] target : unconnected) {
-            boolean linked = false;
+        // Phase 1: Proximity-Based Minimum Spanning Tree
+        while (!unconnected.isEmpty()) {
+            int[] bestConnected = null;
+            int[] bestUnconnected = null;
+            double minDistanceSq = Double.MAX_VALUE;
+            boolean foundIntersectionFree = false;
 
-            // Shuffle connected pool to pick random attachment points instead of hub-and-spoke
-            List<int[]> potentialAnchors = new ArrayList<>(connected);
-            Collections.shuffle(potentialAnchors, new Random(rand.nextLong()));
+            // Find the absolute shortest distance between ANY connected and ANY unconnected island
+            for (int[] u : unconnected) {
+                for (int[] c : connected) {
+                    double distSq = distanceSq(c, u);
+                    boolean intersects = doesBridgeIntersect(c, u, allIslands);
 
-            for (int[] anchor : potentialAnchors) {
-                if (!doesBridgeIntersect(anchor, target, allIslands)) {
-                    int width = 1 + rand.nextInt(3);
-                    createAndAddBridge(builder, anchor[0], anchor[1], anchor[2], anchor[3], target[0], target[1], target[2], target[3], width);
-                    linked = true;
-                    break;
+                    // Prioritize non-intersecting close connections
+                    if (!intersects && distSq < minDistanceSq) {
+                        minDistanceSq = distSq;
+                        bestConnected = c;
+                        bestUnconnected = u;
+                        foundIntersectionFree = true;
+                    }
+                    // Fallback: If no valid path exists yet, track the closest intersecting one
+                    else if (!foundIntersectionFree && distSq < minDistanceSq) {
+                        minDistanceSq = distSq;
+                        bestConnected = c;
+                        bestUnconnected = u;
+                    }
                 }
             }
 
-            // Fallback: If all paths clip through other islands, force a connection to the closest anchor
-            if (!linked) {
-                int[] fallbackAnchor = getClosestIsland(target, connected);
-                int width = 1 + rand.nextInt(3);
-                createAndAddBridge(builder, fallbackAnchor[0], fallbackAnchor[1], fallbackAnchor[2], fallbackAnchor[3], target[0], target[1], target[2], target[3], width);
-            }
+            int width = 1 + rand.nextInt(3);
+            createAndAddBridge(builder, bestConnected[0], bestConnected[1], bestConnected[2], bestConnected[3],
+                    bestUnconnected[0], bestUnconnected[1], bestUnconnected[2], bestUnconnected[3], width);
 
-            connected.add(target);
+            connected.add(bestUnconnected);
+            unconnected.remove(bestUnconnected);
         }
 
-        // Phase 2: Extra Webbing (Adds random extra bridges for non-linear exploration)
-        int extraBridges = rand.nextInt(connectableIslands.size() / 2 + 1);
-        for (int i = 0; i < extraBridges; i++) {
-            int[] a = connectableIslands.get(rand.nextInt(connectableIslands.size()));
-            int[] b = connectableIslands.get(rand.nextInt(connectableIslands.size()));
+        // Phase 2: Proximity Webbing (Only connect nearby neighbors for natural loops)
+        double maxWebbingDistSq = Math.pow(45, 2); // Max distance for extra bridges (adjust as needed)
 
-            if (a != b && !doesBridgeIntersect(a, b, allIslands)) {
-                int width = 1 + rand.nextInt(2);
-                createAndAddBridge(builder, a[0], a[1], a[2], a[3], b[0], b[1], b[2], b[3], width);
+        for (int i = 0; i < connectableIslands.size(); i++) {
+            for (int j = i + 1; j < connectableIslands.size(); j++) {
+                int[] a = connectableIslands.get(i);
+                int[] b = connectableIslands.get(j);
+
+                // 30% chance to connect if they are close together and don't intersect
+                if (distanceSq(a, b) < maxWebbingDistSq && rand.nextFloat() < 0.3F) {
+                    if (!doesBridgeIntersect(a, b, allIslands)) {
+                        int width = 1 + rand.nextInt(2);
+                        createAndAddBridge(builder, a[0], a[1], a[2], a[3], b[0], b[1], b[2], b[3], width);
+                    }
+                }
             }
         }
+    }
+
+// ── Required Helper Method ──────────────────────────────────────
+
+    private double distanceSq(int[] a, int[] b) {
+        return Math.pow(a[0] - b[0], 2) + Math.pow(a[1] - b[1], 2) + Math.pow(a[2] - b[2], 2);
     }
 
 // ── Math & Utility Methods ──────────────────────────────────────
@@ -231,7 +253,7 @@ public class FloatingIslandStructure extends Structure {
 
     private int[] tryFindPosition(RandomSource rand, int anchorX, int anchorY, int anchorZ, int startX, int startZ, int diameter, int minRadius, int maxRadius, int ySpread, List<int[]> allIslands) {
         final int MAX_RADIUS = 128;
-        final int MAX_ATTEMPTS = 5;
+        final int MAX_ATTEMPTS = 10;
 
         // Create a safe buffer zone so the island never clips outside the max bounds
         double safeBoundary = MAX_RADIUS - (diameter / 2.0) - 5;
@@ -246,7 +268,7 @@ public class FloatingIslandStructure extends Structure {
             int cz = startZ + Mth.floor(Math.sin(angle) * dist);
             int cy = Mth.clamp(anchorY + (-ySpread + rand.nextInt((ySpread * 2) + 1)), MIN_Y, MAX_Y);
 
-            if (!overlapsAny(cx, cz, diameter, allIslands)) {
+            if (!overlapsAny(cx, cy, cz, diameter, allIslands)) {
                 return new int[]{cx, cy, cz};
             }
         }
@@ -263,19 +285,24 @@ public class FloatingIslandStructure extends Structure {
      * would overlap too much with any already-placed island.
      * Minimum allowed distance = 60% of the sum of both radii.
      */
-    private static boolean overlapsAny(int cx, int cz, int diameter, List<int[]> placed) {
+    private static boolean overlapsAny(int cx, int cy, int cz, int diameter, List<int[]> placed) {
         int candidateRadius = diameter / 2;
         for (int[] existing : placed) {
-            int ex = existing[0], ez = existing[2], eDiameter = existing[3];
+            int ex = existing[0], ey = existing[1], ez = existing[2], eDiameter = existing[3];
             int existingRadius = eDiameter / 2;
 
+            // Calculate true 3D distance
             double dx = cx - ex;
+            double dy = cy - ey;
             double dz = cz - ez;
-            double dist = Math.sqrt(dx * dx + dz * dz);
-            double minDist = (candidateRadius + existingRadius) * 0.6;
+            double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-            if (dist < minDist)
+            // Minimum allowed distance (adjust 0.7 if you want more vertical/horizontal breathing room)
+            double minDist = (candidateRadius + existingRadius) * 0.7;
+
+            if (dist < minDist) {
                 return true;
+            }
         }
         return false;
     }
