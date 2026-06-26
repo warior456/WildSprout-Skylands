@@ -16,7 +16,7 @@ public class BigIslandDecorator implements IslandDecorator {
     public void decorateSurface(WorldGenLevel world, ChunkGenerator generator, BlockPos.MutableBlockPos pos, 
                                  List<BlockPos> surfaceBlocks, RandomSource random) {
         if (random.nextInt(10) < 3) {
-            int treeCount = 3 + random.nextInt(4);
+            int treeCount = 4 + random.nextInt(7);
             for (int i = 0; i < treeCount; i++) {
                 if (surfaceBlocks.isEmpty()) break;
                 int index = random.nextInt(surfaceBlocks.size());

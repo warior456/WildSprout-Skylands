@@ -37,7 +37,7 @@ public class VegetationDecorator {
                 }
             } else if (roll < 76) {
                 world.setBlock(pos, Blocks.FERN.defaultBlockState(), 2);
-            } else if (roll < 88) {
+            } else { // roll >= 76
                 BlockState flower = switch (random.nextInt(4)) {
                     case 0 -> Blocks.POPPY.defaultBlockState();
                     case 1 -> Blocks.DANDELION.defaultBlockState();
@@ -45,8 +45,6 @@ public class VegetationDecorator {
                     default -> Blocks.AZURE_BLUET.defaultBlockState();
                 };
                 world.setBlock(pos, flower, 2);
-            } else {
-                placeSmallTree(world, generator, surface.above(), random);
             }
         }
     }
@@ -84,8 +82,10 @@ public class VegetationDecorator {
         float spawnChance = 0.5f; // 50% chance to place any tree
         var treeFeature = TreeFeatures.OAK;
         if (biomeKey != null) {
-            if (biomeKey.equals(Biomes.PLAINS) || biomeKey.equals(Biomes.DESERT)) {
+            if (biomeKey.equals(Biomes.PLAINS)) {
                 spawnChance = 0.1f;
+            } else if (biomeKey.equals(Biomes.DESERT)) {
+                spawnChance = 0.02f; // Very small chance
             } else if (biomeKey.equals(Biomes.FOREST)) {
                 spawnChance = 0.8f;
                 if (random.nextFloat() < 0.8f) treeFeature = TreeFeatures.BIRCH;
@@ -101,6 +101,8 @@ public class VegetationDecorator {
             } else if (biomeKey.equals(Biomes.DARK_FOREST)) {
                 spawnChance = 0.9f;
                 if (random.nextFloat() < 0.9f) treeFeature = TreeFeatures.DARK_OAK;
+            } else if (biomeKey.equals(Biomes.SWAMP) || biomeKey.equals(Biomes.MANGROVE_SWAMP)) {
+                spawnChance = 0.6f;
             }
         }
         if (random.nextFloat() > spawnChance) return;
