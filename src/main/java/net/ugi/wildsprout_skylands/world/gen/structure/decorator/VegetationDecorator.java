@@ -84,22 +84,21 @@ public class VegetationDecorator {
         float spawnChance = 0.5f; // 50% chance to place any tree
         var treeFeature = TreeFeatures.OAK;
         if (biomeKey != null) {
-            // Use proper biome keys for comparison
-            if (biomeKey == Biomes.PLAINS || biomeKey == Biomes.DESERT) {
+            if (biomeKey.equals(Biomes.PLAINS) || biomeKey.equals(Biomes.DESERT)) {
                 spawnChance = 0.1f;
-            } else if (biomeKey == Biomes.FOREST) {
+            } else if (biomeKey.equals(Biomes.FOREST)) {
                 spawnChance = 0.8f;
                 if (random.nextFloat() < 0.8f) treeFeature = TreeFeatures.BIRCH;
-            } else if (biomeKey == Biomes.TAIGA) {
+            } else if (biomeKey.equals(Biomes.TAIGA)) {
                 spawnChance = 0.7f;
                 if (random.nextFloat() < 0.7f) treeFeature = TreeFeatures.SPRUCE;
-            } else if (biomeKey == Biomes.JUNGLE) {
+            } else if (biomeKey.equals(Biomes.JUNGLE)) {
                 spawnChance = 0.6f;
                 if (random.nextFloat() < 0.6f) treeFeature = TreeFeatures.JUNGLE_TREE;
-            } else if (biomeKey == Biomes.SAVANNA) {
+            } else if (biomeKey.equals(Biomes.SAVANNA)) {
                 spawnChance = 0.5f;
                 if (random.nextFloat() < 0.5f) treeFeature = TreeFeatures.ACACIA;
-            } else if (biomeKey == Biomes.DARK_FOREST) {
+            } else if (biomeKey.equals(Biomes.DARK_FOREST)) {
                 spawnChance = 0.9f;
                 if (random.nextFloat() < 0.9f) treeFeature = TreeFeatures.DARK_OAK;
             }
