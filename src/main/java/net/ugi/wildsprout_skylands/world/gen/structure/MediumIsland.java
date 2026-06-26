@@ -13,7 +13,8 @@ public class MediumIsland extends AbstractIsland {
     }
 
     @Override
-    protected void decorate(WorldGenLevel world, ChunkGenerator generator, BlockPos.MutableBlockPos pos, List<BlockPos> surfaceBlocks, RandomSource random) {
+    protected void decorate(WorldGenLevel world, ChunkGenerator generator, BlockPos.MutableBlockPos pos, List<BlockPos> surfaceBlocks,
+            RandomSource random) {
         placeMediumVegetation(world, pos, surfaceBlocks, random);
     }
 }

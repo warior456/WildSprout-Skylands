@@ -11,6 +11,8 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.levelgen.synth.NormalNoise;
 
+import net.ugi.wildsprout_skylands.world.gen.structure.decorator.HangingRootsDecorator;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -35,9 +37,6 @@ public abstract class AbstractIsland {
         this.type = type;
         this.lobes = createLobes(RandomSource.create(shapeSeed), diameter, minLobes, maxLobes);
     }
-
-    //decorator
-    protected abstract void decorate(WorldGenLevel world, ChunkGenerator generator, BlockPos.MutableBlockPos pos, List<BlockPos> surfaceBlocks, RandomSource random);
 
     public boolean shouldFill(int worldX, int worldY, int worldZ,
                               int localX, int localY, int localZ,
@@ -64,8 +63,6 @@ public abstract class AbstractIsland {
         return density + (noiseValue * NOISE_STRENGTH) > 0.0;
     }
 
-
-
     public int getDepthFromSurface(int worldX, int worldY, int worldZ,
                                    int localX, int localY, int localZ,
                                    NormalNoise shapeNoise, NormalNoise surfaceNoise) {
@@ -79,19 +76,25 @@ public abstract class AbstractIsland {
 
 
     public void generateChunk(WorldGenLevel world, ChunkGenerator generator,
-                              int minX, int maxX, int minY, int maxY, int minZ, int maxZ,
-                              NormalNoise shapeNoise, NormalNoise surfaceNoise,
-                              RandomSource random) {
-        List<BlockPos> surfaceBlocks = placeBlocks(world, minX, maxX, minY, maxY, minZ, maxZ, shapeNoise, surfaceNoise);
+            int minX, int maxX, int minY, int maxY, int minZ, int maxZ,
+            NormalNoise shapeNoise, NormalNoise surfaceNoise,
+            RandomSource random) {
+        BlockPlacementResult result = placeBlocks(world, minX, maxX, minY, maxY, minZ, maxZ, shapeNoise, surfaceNoise,
+                random);
 
         BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
-        this.decorate(world, generator, mutablePos, surfaceBlocks, random);
+        this.decorate(world, generator, mutablePos, result.surfaceBlocks(), random);
+
+        // Decorator pass: hanging roots on the underside of the island
+        HangingRootsDecorator.placeHangingRoots(world, mutablePos, result.bottomBlocks(), random, 0.15f);
     }
 
-    private List<BlockPos> placeBlocks(WorldGenLevel world,
-                                       int minX, int maxX, int minY, int maxY, int minZ, int maxZ,
-                                       NormalNoise shapeNoise, NormalNoise surfaceNoise) {
+    private BlockPlacementResult placeBlocks(WorldGenLevel world,
+            int minX, int maxX, int minY, int maxY, int minZ, int maxZ,
+            NormalNoise shapeNoise, NormalNoise surfaceNoise,
+            RandomSource random) {
         List<BlockPos> surfaceBlocks = new ArrayList<>();
+        List<BlockPos> bottomBlocks = new ArrayList<>();
         BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
         int radius = this.diameter / 2;
 
@@ -103,7 +106,8 @@ public abstract class AbstractIsland {
                     int localZ = z - this.center.getZ();
 
                     double horizDistSq = (localX * localX) + (localZ * localZ);
-                    if (horizDistSq > (radius + 4.0) * (radius + 4.0)) continue;
+                    if (horizDistSq > (radius + 4.0) * (radius + 4.0))
+                        continue;
 
                     if (!shouldFill(x, y, z, localX, localY, localZ, shapeNoise, surfaceNoise)) {
                         continue;
@@ -111,9 +115,16 @@ public abstract class AbstractIsland {
 
                     mutablePos.set(x, y, z);
                     BlockState existing = world.getBlockState(mutablePos);
-                    if (!existing.isAir() && !existing.canBeReplaced()) continue;
+                    if (!existing.isAir() && !existing.canBeReplaced())
+                        continue;
 
                     int depth = getDepthFromSurface(x, y, z, localX, localY, localZ, shapeNoise, surfaceNoise);
+
+                    // Check if this is a bottom-surface block (solid with air below)
+                    if (!shouldFill(x, y - 1, z, localX, localY - 1, localZ, shapeNoise, surfaceNoise)) {
+                        bottomBlocks.add(new BlockPos(x, y, z));
+                    }
+
                     BlockState state;
                     if (depth == 0) {
                         state = Blocks.GRASS_BLOCK.defaultBlockState();
@@ -122,15 +133,43 @@ public abstract class AbstractIsland {
                         state = Blocks.DIRT.defaultBlockState();
                     } else {
                         int stoneVariant = Math.abs(x * 31 + z * 17 + y * 13) % 8;
-                        state = stoneVariant == 0 ? Blocks.ANDESITE.defaultBlockState() : Blocks.STONE.defaultBlockState();
+                        BlockState stoneState = stoneVariant == 0 ? Blocks.ANDESITE.defaultBlockState()
+                                : Blocks.STONE.defaultBlockState();
+
+                        int oreRoll = random.nextInt(100);
+                        if (oreRoll < 5) {
+                            int typeRoll = random.nextInt(100);
+                            if (typeRoll < 40) {
+                                state = Blocks.COAL_ORE.defaultBlockState();
+                            } else if (typeRoll < 70) {
+                                state = Blocks.IRON_ORE.defaultBlockState();
+                            } else if (typeRoll < 85) {
+                                state = Blocks.COPPER_ORE.defaultBlockState();
+                            } else if (typeRoll < 92) {
+                                state = Blocks.LAPIS_ORE.defaultBlockState();
+                            } else if (typeRoll < 96) {
+                                state = Blocks.GOLD_ORE.defaultBlockState();
+                            } else if (typeRoll < 99) {
+                                state = Blocks.REDSTONE_ORE.defaultBlockState();
+                            } else {
+                                state = Blocks.DIAMOND_ORE.defaultBlockState();
+                            }
+                        } else {
+                            state = stoneState;
+                        }
                     }
 
                     world.setBlock(mutablePos, state, 2);
                 }
             }
         }
-        return surfaceBlocks;
+        return new BlockPlacementResult(surfaceBlocks, bottomBlocks);
     }
+
+    /**
+     * Holds both the top-surface and bottom-surface block lists from a placement pass.
+     */
+    private record BlockPlacementResult(List<BlockPos> surfaceBlocks, List<BlockPos> bottomBlocks) {}
 
     private double getCompositeDensity(int x, int y, int z) {
         double density = Double.NEGATIVE_INFINITY;
@@ -149,8 +188,10 @@ public abstract class AbstractIsland {
         for (int i = 1; i < lobes.size(); i++) {
             density = Math.max(density, connectorDensity(x, y, z, lobes.get(i - 1), lobes.get(i)));
         }
-        if (y > 10) density -= (y - 10) * 0.11;
-        if (y < -8) density += Math.min(0.32, (-8 - y) * 0.03);
+        if (y > 10)
+            density -= (y - 10) * 0.11;
+        if (y < -8)
+            density += Math.min(0.32, (-8 - y) * 0.03);
         return density;
     }
 
@@ -159,7 +200,8 @@ public abstract class AbstractIsland {
         double segmentY = b.offsetY - a.offsetY;
         double segmentZ = b.offsetZ - a.offsetZ;
         double lengthSquared = segmentX * segmentX + segmentY * segmentY + segmentZ * segmentZ;
-        if (lengthSquared < 0.0001) return Double.NEGATIVE_INFINITY;
+        if (lengthSquared < 0.0001)
+            return Double.NEGATIVE_INFINITY;
         double pointX = x - a.offsetX;
         double pointY = y - a.offsetY;
         double pointZ = z - a.offsetZ;
@@ -220,17 +262,21 @@ public abstract class AbstractIsland {
     }
 
     // Added ChunkGenerator parameter
-    protected static void placeBigVegetation(WorldGenLevel world, ChunkGenerator generator, BlockPos.MutableBlockPos pos, List<BlockPos> surfaceBlocks, RandomSource random) {
+    protected static void placeBigVegetation(WorldGenLevel world, ChunkGenerator generator, BlockPos.MutableBlockPos pos,
+            List<BlockPos> surfaceBlocks, RandomSource random) {
         for (BlockPos surface : surfaceBlocks) {
             pos.set(surface.getX(), surface.getY() + 1, surface.getZ());
-            if (!world.getBlockState(pos).isAir()) continue;
+            if (!world.getBlockState(pos).isAir())
+                continue;
 
             int roll = random.nextInt(100);
-            if (roll < 22) continue;
+            if (roll < 22)
+                continue;
             if (roll < 52) {
                 world.setBlock(pos, Blocks.SHORT_GRASS.defaultBlockState(), 2);
             } else if (roll < 66) {
-                BlockPos.MutableBlockPos upper = new BlockPos.MutableBlockPos(surface.getX(), surface.getY() + 2, surface.getZ());
+                BlockPos.MutableBlockPos upper = new BlockPos.MutableBlockPos(surface.getX(), surface.getY() + 2,
+                        surface.getZ());
                 if (world.getBlockState(upper).isAir()) {
                     world.setBlock(pos, Blocks.TALL_GRASS.defaultBlockState(), 2);
                 }
@@ -250,13 +296,16 @@ public abstract class AbstractIsland {
         }
     }
 
-    protected static void placeMediumVegetation(WorldGenLevel world, BlockPos.MutableBlockPos pos, List<BlockPos> surfaceBlocks, RandomSource random) {
+    protected static void placeMediumVegetation(WorldGenLevel world, BlockPos.MutableBlockPos pos,
+            List<BlockPos> surfaceBlocks, RandomSource random) {
         for (BlockPos surface : surfaceBlocks) {
             pos.set(surface.getX(), surface.getY() + 1, surface.getZ());
-            if (!world.getBlockState(pos).isAir()) continue;
+            if (!world.getBlockState(pos).isAir())
+                continue;
 
             int roll = random.nextInt(100);
-            if (roll < 48) continue;
+            if (roll < 48)
+                continue;
             if (roll < 82) {
                 world.setBlock(pos, Blocks.SHORT_GRASS.defaultBlockState(), 2);
             } else if (roll < 90) {
@@ -274,22 +323,26 @@ public abstract class AbstractIsland {
     }
 
     // Added ChunkGenerator parameter
-    protected void placeFeatures(WorldGenLevel world, ChunkGenerator generator, BlockPos.MutableBlockPos pos, List<BlockPos> surfaceBlocks, RandomSource random) {
-
+    protected void placeFeatures(WorldGenLevel world, ChunkGenerator generator,BlockPos.MutableBlockPos pos,
+            List<BlockPos> surfaceBlocks, RandomSource random) {
 
     }
 
-    protected static void placeRockFeature(WorldGenLevel world, BlockPos.MutableBlockPos pos, BlockPos base, RandomSource random) {
+    protected static void placeRockFeature(WorldGenLevel world, BlockPos.MutableBlockPos pos, BlockPos base,
+            RandomSource random) {
         int radius = 1 + random.nextInt(2);
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dy = 0; dy <= 1; dy++) {
                 for (int dz = -radius; dz <= radius; dz++) {
                     int distSq = (dx * dx) + (dz * dz) + (dy * dy * 2);
-                    if (distSq > radius * radius + 1) continue;
+                    if (distSq > radius * radius + 1)
+                        continue;
                     pos.set(base.getX() + dx, base.getY() + dy, base.getZ() + dz);
                     BlockState existing = world.getBlockState(pos);
-                    if (!existing.isAir() && !existing.canBeReplaced()) continue;
-                    BlockState rock = random.nextInt(5) == 0 ? Blocks.ANDESITE.defaultBlockState() : Blocks.STONE.defaultBlockState();
+                    if (!existing.isAir() && !existing.canBeReplaced())
+                        continue;
+                    BlockState rock = random.nextInt(5) == 0 ? Blocks.ANDESITE.defaultBlockState()
+                            : Blocks.STONE.defaultBlockState();
                     world.setBlock(pos, rock, 2);
                 }
             }
@@ -334,17 +387,21 @@ public abstract class AbstractIsland {
 
 
 
+    protected abstract void decorate(WorldGenLevel world, ChunkGenerator generator,
+                                      BlockPos.MutableBlockPos pos, List<BlockPos> surfaceBlocks,
+                                      RandomSource random);
+
     public IslandType getType() {
         return type;
     }
-
 
 
     private static final class Lobe {
         final double offsetX, offsetY, offsetZ;
         final double radiusX, radiusYTop, radiusYBottom, radiusZ;
 
-        Lobe(double offsetX, double offsetY, double offsetZ, double radiusX, double radiusYTop, double radiusYBottom, double radiusZ) {
+        Lobe(double offsetX, double offsetY, double offsetZ, double radiusX, double radiusYTop, double radiusYBottom,
+                double radiusZ) {
             this.offsetX = offsetX;
             this.offsetY = offsetY;
             this.offsetZ = offsetZ;
