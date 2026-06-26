@@ -11,8 +11,6 @@ public class ModTags {
     public static class Biome {
         public static final TagKey<net.minecraft.world.level.biome.Biome> HAS_FLOATING_ISLAND =
                 createTag("has_structure/floating_island");
-        public static final TagKey<net.minecraft.world.level.biome.Biome> HAS_GLASS_BALL_CLUSTER =
-                createTag("has_structure/glass_ball_cluster");
 
         private static TagKey<net.minecraft.world.level.biome.Biome> createTag(String name) {
             return TagKey.create(Registries.BIOME, ResourceLocation.fromNamespaceAndPath(WildsproutSkylands.MODID, name));

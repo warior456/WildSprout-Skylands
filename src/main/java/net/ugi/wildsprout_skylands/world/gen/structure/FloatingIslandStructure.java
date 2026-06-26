@@ -47,8 +47,8 @@ public class FloatingIslandStructure extends Structure {
         return Optional.of(new GenerationStub(start, builder -> {
             RandomSource rand = RandomSource.create(baseSeed);
 
-            List<int[]> allIslands = new ArrayList<>();
-            List<int[]> connectableIslands = new ArrayList<>(); // Combined Big & Medium islands
+            List<Island> allIslands = new ArrayList<>();
+            List<Island> connectableIslands = new ArrayList<>(); // Combined Big & Medium islands
 
             int bigCount = rand.nextIntBetweenInclusive(1,4);
             int mediumCount = rand.nextIntBetweenInclusive(3,9);
@@ -70,13 +70,13 @@ public class FloatingIslandStructure extends Structure {
 
 
 
-    private void generateBigIslands(StructurePiecesBuilder builder, RandomSource rand, long baseSeed, int startX, int startY, int startZ, int count, List<int[]> allIslands, List<int[]> connectableIslands) {
+    private void generateBigIslands(StructurePiecesBuilder builder, RandomSource rand, long baseSeed, int startX, int startY, int startZ, int count, List<Island> allIslands, List<Island> connectableIslands) {
         for (int i = 0; i < count; i++) {
             int diameter = 25 + rand.nextInt(16);
-            int[] pos;
+            BlockPos pos;
 
             if (i == 0) {
-                pos = new int[]{startX, startY, startZ};
+                pos = new BlockPos(startX, startY, startZ);
             } else {
                 pos = tryFindPosition(rand, startY, startX, startZ, diameter, 15, allIslands);
             }
@@ -84,7 +84,7 @@ public class FloatingIslandStructure extends Structure {
             if (pos == null) continue;
 
             long shapeSeed = baseSeed + (341873128712L * i);
-            int[] info = new int[]{pos[0], pos[1], pos[2], diameter};
+            Island info = new Island(pos, diameter, shapeSeed, IslandType.BIG);
 
             connectableIslands.add(info);
             allIslands.add(info);
@@ -92,19 +92,19 @@ public class FloatingIslandStructure extends Structure {
         }
     }
 
-    private void generateMediumIslands(StructurePiecesBuilder builder, RandomSource rand, long baseSeed, int startX, int startZ, int bigCount, int count, List<int[]> allIslands, List<int[]> connectableIslands) {
+    private void generateMediumIslands(StructurePiecesBuilder builder, RandomSource rand, long baseSeed, int startX, int startZ, int bigCount, int count, List<Island> allIslands, List<Island> connectableIslands) {
         if (connectableIslands.isEmpty()) return;
 
         for (int i = 0; i < count; i++) {
             int diameter = 12 + rand.nextInt(9);
             // Anchor to ANY existing connectable island (Big or Medium) to spread the network
-            int[] anchor = connectableIslands.get(rand.nextInt(connectableIslands.size()));
+            Island anchor = connectableIslands.get(rand.nextInt(connectableIslands.size()));
 
-            int[] pos = tryFindPosition(rand, anchor[1], startX, startZ, diameter, 25, allIslands);
+            BlockPos pos = tryFindPosition(rand, anchor.getCenter().getY(), startX, startZ, diameter, 25, allIslands);
             if (pos == null) continue;
 
             long shapeSeed = baseSeed + (341873128712L * (bigCount + i));
-            int[] info = new int[]{pos[0], pos[1], pos[2], diameter};
+            Island info = new Island(pos, diameter, shapeSeed, IslandType.MEDIUM);
 
             connectableIslands.add(info);
             allIslands.add(info);
@@ -112,39 +112,39 @@ public class FloatingIslandStructure extends Structure {
         }
     }
 
-    private void generateSmallIslands(StructurePiecesBuilder builder, RandomSource rand, long baseSeed, int startX, int startY, int startZ, int bigCount, int mediumCount, int count, List<int[]> allIslands) {
+    private void generateSmallIslands(StructurePiecesBuilder builder, RandomSource rand, long baseSeed, int startX, int startY, int startZ, int bigCount, int mediumCount, int count, List<Island> allIslands) {
         for (int i = 0; i < count; i++) {
             int diameter = 5 + rand.nextInt(4);
-            int[] pos = tryFindPosition(rand, startY, startX, startZ, diameter, 30, allIslands);
+            BlockPos pos = tryFindPosition(rand, startY, startX, startZ, diameter, 30, allIslands);
             if (pos == null) continue;
 
             long shapeSeed = baseSeed + (341873128712L * (bigCount + mediumCount + i));
-            allIslands.add(new int[]{pos[0], pos[1], pos[2], diameter});
+            allIslands.add(new Island(pos, diameter, shapeSeed, IslandType.SMALL));
             addIslandPiece(builder, pos, diameter, shapeSeed, IslandType.SMALL);
         }
     }
 
 // ── Bridge Generation Logic ─────────────────────────────────────
 
-    private void generateBridges(StructurePiecesBuilder builder, RandomSource rand, List<int[]> connectableIslands, List<int[]> allIslands) {
+    private void generateBridges(StructurePiecesBuilder builder, RandomSource rand, List<Island> connectableIslands, List<Island> allIslands) {
         if (connectableIslands.size() < 2) return;
 
-        List<int[]> connected = new ArrayList<>();
-        List<int[]> unconnected = new ArrayList<>(connectableIslands);
+        List<Island> connected = new ArrayList<>();
+        List<Island> unconnected = new ArrayList<>(connectableIslands);
 
         // Start the network with the first island
         connected.add(unconnected.remove(0));
 
         // Phase 1: Proximity-Based Minimum Spanning Tree
         while (!unconnected.isEmpty()) {
-            int[] bestConnected = null;
-            int[] bestUnconnected = null;
+            Island bestConnected = null;
+            Island bestUnconnected = null;
             double minDistanceSq = Double.MAX_VALUE;
             boolean foundIntersectionFree = false;
 
             // Find the absolute shortest distance between ANY connected and ANY unconnected island
-            for (int[] u : unconnected) {
-                for (int[] c : connected) {
+            for (Island u : unconnected) {
+                for (Island c : connected) {
                     double distSq = distanceSq(c, u);
                     boolean intersects = doesBridgeIntersect(c, u, allIslands);
 
@@ -165,8 +165,10 @@ public class FloatingIslandStructure extends Structure {
             }
 
             int width = 1 + rand.nextInt(3);
-            createAndAddBridge(builder, bestConnected[0], bestConnected[1], bestConnected[2], bestConnected[3],
-                    bestUnconnected[0], bestUnconnected[1], bestUnconnected[2], bestUnconnected[3], width);
+            BlockPos cp = bestConnected.getCenter();
+            BlockPos up = bestUnconnected.getCenter();
+            createAndAddBridge(builder, cp.getX(), cp.getY(), cp.getZ(), bestConnected.getDiameter(),
+                    up.getX(), up.getY(), up.getZ(), bestUnconnected.getDiameter(), width);
 
             connected.add(bestUnconnected);
             unconnected.remove(bestUnconnected);
@@ -177,14 +179,17 @@ public class FloatingIslandStructure extends Structure {
 
         for (int i = 0; i < connectableIslands.size(); i++) {
             for (int j = i + 1; j < connectableIslands.size(); j++) {
-                int[] a = connectableIslands.get(i);
-                int[] b = connectableIslands.get(j);
+                Island a = connectableIslands.get(i);
+                Island b = connectableIslands.get(j);
 
                 // 30% chance to connect if they are close together and don't intersect
                 if (distanceSq(a, b) < maxWebbingDistSq && rand.nextFloat() < 0.3F) {
                     if (!doesBridgeIntersect(a, b, allIslands)) {
                         int width = 1 + rand.nextInt(2);
-                        createAndAddBridge(builder, a[0], a[1], a[2], a[3], b[0], b[1], b[2], b[3], width);
+                        BlockPos ap = a.getCenter();
+                        BlockPos bp = b.getCenter();
+                        createAndAddBridge(builder, ap.getX(), ap.getY(), ap.getZ(), a.getDiameter(), 
+                                bp.getX(), bp.getY(), bp.getZ(), b.getDiameter(), width);
                     }
                 }
             }
@@ -193,44 +198,50 @@ public class FloatingIslandStructure extends Structure {
 
 // ── Required Helper Method ──────────────────────────────────────
 
-    private double distanceSq(int[] a, int[] b) {
-        return Math.pow(a[0] - b[0], 2) + Math.pow(a[1] - b[1], 2) + Math.pow(a[2] - b[2], 2);
+    private double distanceSq(Island a, Island b) {
+        BlockPos ap = a.getCenter();
+        BlockPos bp = b.getCenter();
+        return Math.pow(ap.getX() - bp.getX(), 2) + Math.pow(ap.getY() - bp.getY(), 2) + Math.pow(ap.getZ() - bp.getZ(), 2);
     }
 
 // ── Math & Utility Methods ──────────────────────────────────────
 
-    private boolean doesBridgeIntersect(int[] a, int[] b, List<int[]> allIslands) {
-        for (int[] island : allIslands) {
+    private boolean doesBridgeIntersect(Island a, Island b, List<Island> allIslands) {
+        for (Island island : allIslands) {
             // Don't check collisions against the two islands the bridge is actively connecting
             if (island == a || island == b) continue;
 
-            double radius = (island[3] / 2.0) + 2.0; // Added 2 block buffer zone
+            double radius = (island.getDiameter() / 2.0) + 2.0; // Added 2 block buffer zone
+
+            BlockPos ap = a.getCenter();
+            BlockPos bp = b.getCenter();
+            BlockPos ip = island.getCenter();
 
             // 3D Line Segment to Point Distance Calculation
-            double dx = b[0] - a[0];
-            double dy = b[1] - a[1];
-            double dz = b[2] - a[2];
+            double dx = bp.getX() - ap.getX();
+            double dy = bp.getY() - ap.getY();
+            double dz = bp.getZ() - ap.getZ();
             double lenSq = dx * dx + dy * dy + dz * dz;
 
             if (lenSq == 0) continue;
 
-            double cx = island[0] - a[0];
-            double cy = island[1] - a[1];
-            double cz = island[2] - a[2];
+            double cx = ip.getX() - ap.getX();
+            double cy = ip.getY() - ap.getY();
+            double cz = ip.getZ() - ap.getZ();
 
             // Find closest point (t) on the line segment
             double t = (cx * dx + cy * dy + cz * dz) / lenSq;
             t = Math.max(0, Math.min(1, t)); // Clamp between island A (0) and island B (1)
 
             // Calculate 3D coordinates of that closest point
-            double px = a[0] + t * dx;
-            double py = a[1] + t * dy;
-            double pz = a[2] + t * dz;
+            double px = ap.getX() + t * dx;
+            double py = ap.getY() + t * dy;
+            double pz = ap.getZ() + t * dz;
 
             // Check if that point is inside the island's radius
-            double distSq = (island[0] - px) * (island[0] - px) +
-                    (island[1] - py) * (island[1] - py) +
-                    (island[2] - pz) * (island[2] - pz);
+            double distSq = (ip.getX() - px) * (ip.getX() - px) +
+                    (ip.getY() - py) * (ip.getY() - py) +
+                    (ip.getZ() - pz) * (ip.getZ() - pz);
 
             if (distSq < (radius * radius)) {
                 return true; // The bridge passes through this island!
@@ -239,7 +250,7 @@ public class FloatingIslandStructure extends Structure {
         return false;
     }
 
-    private int[] tryFindPosition(RandomSource rand, int anchorY, int startX, int startZ, int diameter, int ySpread, List<int[]> allIslands) {
+    private BlockPos tryFindPosition(RandomSource rand, int anchorY, int startX, int startZ, int diameter, int ySpread, List<Island> allIslands) {
         final int MAX_RADIUS = 128;
         final int MAX_ATTEMPTS = 12;
 
@@ -259,36 +270,36 @@ public class FloatingIslandStructure extends Structure {
             int currentMaxY = Config.FLOATING_ISLANDS_MAX_Y.getAsInt();
             int cy = Mth.clamp(anchorY + (-ySpread + rand.nextInt((ySpread * 2) + 1)), currentMinY, currentMaxY);
 
-
             if (!overlapsAny(cx, cz, diameter, allIslands)) {
-                return new int[]{cx, cy, cz};
+                return new BlockPos(cx, cy, cz);
             }
         }
         return null;
     }
 
-    private void addIslandPiece(StructurePiecesBuilder builder, int[] pos, int diameter, long shapeSeed, IslandType type) {
-        BoundingBox box = FloatingIslandPiece.createBoundingBox(pos[0], pos[1], pos[2], diameter);
-        builder.addPiece(new FloatingIslandPiece(pos[0], pos[1], pos[2], shapeSeed, type, diameter, box));
+    private void addIslandPiece(StructurePiecesBuilder builder, BlockPos pos, int diameter, long shapeSeed, IslandType type) {
+        BoundingBox box = FloatingIslandPiece.createBoundingBox(pos.getX(), pos.getY(), pos.getZ(), diameter);
+        builder.addPiece(new FloatingIslandPiece(pos.getX(), pos.getY(), pos.getZ(), shapeSeed, type, diameter, box));
     }
 
     /**
      * Returns true if a candidate island at (cx, cz) with the given diameter
      * would overlap too much with any already-placed island.
-     * Minimum allowed distance = 60% of the sum of both radii.
+     * Minimum allowed distance = sum of both radii.
      */
-    private boolean overlapsAny(int cx, int cz, int diameter, List<int[]> allIslands) {
+    private boolean overlapsAny(int cx, int cz, int diameter, List<Island> allIslands) {
         double radius = diameter / 2.0;
 
-        for (int[] island : allIslands) {
-            int otherX = island[0];
-            int otherZ = island[2]; // Index 2 is the Z coordinate
+        for (Island island : allIslands) {
+            BlockPos pos = island.getCenter();
+            int otherX = pos.getX();
+            int otherZ = pos.getZ();
 
             // Calculate squared 2D distance (faster than using Math.sqrt)
             double distanceSq = Math.pow(cx - otherX, 2) + Math.pow(cz - otherZ, 2);
 
-            // If islands can have different sizes, you'll need to read the other island's diameter from the array here.
-            double minDistance = radius + radius;
+            // Use both island radii for proper check
+            double minDistance = radius + (island.getDiameter() / 2.0);
 
             if (distanceSq < (minDistance * minDistance)) {
                 return true; // Overlap detected on the X/Z plane

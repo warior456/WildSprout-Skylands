@@ -7,22 +7,10 @@ import net.minecraft.world.level.block.Blocks;
 
 import java.util.List;
 
-/**
- * Places hanging roots on the underside of islands.
- * Hanging roots are single blocks that require a solid block directly above them.
- * They are never stacked — only one root per column.
- */
+
 public class HangingRootsDecorator {
 
-    /**
-     * Places hanging roots below bottom-surface blocks.
-     *
-     * @param world        the world to place blocks in
-     * @param mutablePos   a reusable mutable block position
-     * @param bottomBlocks bottom-surface blocks of the island (solid with air below)
-     * @param random       random source for this chunk
-     * @param chance       probability (0.0–1.0) that any given bottom block gets a hanging root
-     */
+
     public static void placeHangingRoots(WorldGenLevel world, BlockPos.MutableBlockPos mutablePos,
                                          List<BlockPos> bottomBlocks, RandomSource random, float chance) {
         for (BlockPos bottom : bottomBlocks) {

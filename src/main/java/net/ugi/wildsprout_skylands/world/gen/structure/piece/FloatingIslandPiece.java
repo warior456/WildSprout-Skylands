@@ -80,21 +80,8 @@ public class FloatingIslandPiece extends StructurePiece {
 
         if (minX > maxX || minY > maxY || minZ > maxZ) return;
 
-        AbstractIsland island;
         BlockPos startCenter = new BlockPos(centerX, centerY, centerZ);
-        switch (islandType) {
-            case BIG:
-                island = new BigIsland(startCenter, diameter, shapeSeed, islandType);
-                break;
-            case MEDIUM:
-                island = new MediumIsland(startCenter, diameter, shapeSeed, islandType);
-                break;
-            case SMALL:
-                island = new SmallIsland(startCenter, diameter, shapeSeed, islandType);
-                break;
-            default:
-                throw new IllegalStateException("Unexpected island type: " + islandType);
-        }
+        Island island = new Island(startCenter, diameter, shapeSeed, islandType);
 
         RandomSource noiseRandom = RandomSource.create(this.shapeSeed ^ world.getSeed());
         NormalNoise shapeNoise = NormalNoise.create(noiseRandom, -3, new double[]{1.0});
