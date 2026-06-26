@@ -18,18 +18,22 @@ import java.util.*;
 
 public class FloatingIslandStructure extends Structure {
     public static final MapCodec<FloatingIslandStructure> CODEC = simpleCodec(FloatingIslandStructure::new);
-    private static final int MIN_Y = 205;//Config.FLOATING_ISLANDS_MIN_Y.getAsInt();
-    private static final int MAX_Y = 270;//Config.FLOATING_ISLANDS_MAX_Y.getAsInt();
+
+
 
     public FloatingIslandStructure(Structure.StructureSettings settings) {
         super(settings);
+
+
     }
 
     @Override
     public Optional<GenerationStub> findGenerationPoint(GenerationContext context) {
+        int currentMinY = Config.FLOATING_ISLANDS_MIN_Y.getAsInt();
+        int currentMaxY = Config.FLOATING_ISLANDS_MAX_Y.getAsInt();
         int startX = context.chunkPos().getMinBlockX() + context.random().nextInt(16);
         int startZ = context.chunkPos().getMinBlockZ() + context.random().nextInt(16);
-        int startY = MIN_Y + context.random().nextInt((MAX_Y - MIN_Y) + 1);
+        int startY = currentMinY + context.random().nextInt((currentMaxY - currentMinY) + 1);
 
         if (context.heightAccessor().isOutsideBuildHeight(startY)) {
             WildsproutSkylands.LOGGER.warn("FloatingIslandStructure: coordinate {} {} {} is outside build height, skipping generation.", startX, startY, startZ);
@@ -64,7 +68,7 @@ public class FloatingIslandStructure extends Structure {
         }));
     }
 
-// ── Extraction Methods ──────────────────────────────────────────
+
 
     private void generateBigIslands(StructurePiecesBuilder builder, RandomSource rand, long baseSeed, int startX, int startY, int startZ, int count, List<int[]> allIslands, List<int[]> connectableIslands) {
         for (int i = 0; i < count; i++) {
@@ -74,7 +78,7 @@ public class FloatingIslandStructure extends Structure {
             if (i == 0) {
                 pos = new int[]{startX, startY, startZ};
             } else {
-                pos = tryFindPosition(rand, startX, startY, startZ, startX, startZ, diameter, 50, 80, 20, allIslands);
+                pos = tryFindPosition(rand, startY, startX, startZ, diameter, 15, allIslands);
             }
 
             if (pos == null) continue;
@@ -96,7 +100,7 @@ public class FloatingIslandStructure extends Structure {
             // Anchor to ANY existing connectable island (Big or Medium) to spread the network
             int[] anchor = connectableIslands.get(rand.nextInt(connectableIslands.size()));
 
-            int[] pos = tryFindPosition(rand, anchor[0], anchor[1], anchor[2], startX, startZ, diameter, 25, 45, 30, allIslands);
+            int[] pos = tryFindPosition(rand, anchor[1], startX, startZ, diameter, 25, allIslands);
             if (pos == null) continue;
 
             long shapeSeed = baseSeed + (341873128712L * (bigCount + i));
@@ -110,8 +114,8 @@ public class FloatingIslandStructure extends Structure {
 
     private void generateSmallIslands(StructurePiecesBuilder builder, RandomSource rand, long baseSeed, int startX, int startY, int startZ, int bigCount, int mediumCount, int count, List<int[]> allIslands) {
         for (int i = 0; i < count; i++) {
-            int diameter = 3 + rand.nextInt(5);
-            int[] pos = tryFindPosition(rand, startX, startY, startZ, startX, startZ, diameter, 30, 100, 35, allIslands);
+            int diameter = 5 + rand.nextInt(4);
+            int[] pos = tryFindPosition(rand, startY, startX, startZ, diameter, 30, allIslands);
             if (pos == null) continue;
 
             long shapeSeed = baseSeed + (341873128712L * (bigCount + mediumCount + i));
@@ -235,25 +239,9 @@ public class FloatingIslandStructure extends Structure {
         return false;
     }
 
-    private int[] getClosestIsland(int[] target, List<int[]> candidates) {
-        int[] closest = candidates.get(0);
-        double minDistSq = Double.MAX_VALUE;
-
-        for (int[] candidate : candidates) {
-            double distSq = Math.pow(target[0] - candidate[0], 2) +
-                    Math.pow(target[1] - candidate[1], 2) +
-                    Math.pow(target[2] - candidate[2], 2);
-            if (distSq < minDistSq) {
-                minDistSq = distSq;
-                closest = candidate;
-            }
-        }
-        return closest;
-    }
-
-    private int[] tryFindPosition(RandomSource rand, int anchorX, int anchorY, int anchorZ, int startX, int startZ, int diameter, int minRadius, int maxRadius, int ySpread, List<int[]> allIslands) {
+    private int[] tryFindPosition(RandomSource rand, int anchorY, int startX, int startZ, int diameter, int ySpread, List<int[]> allIslands) {
         final int MAX_RADIUS = 128;
-        final int MAX_ATTEMPTS = 10;
+        final int MAX_ATTEMPTS = 12;
 
         // Create a safe buffer zone so the island never clips outside the max bounds
         double safeBoundary = MAX_RADIUS - (diameter / 2.0) - 5;
@@ -261,14 +249,18 @@ public class FloatingIslandStructure extends Structure {
         for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
             double angle = rand.nextDouble() * Math.PI * 2.0;
 
-            // Math.sqrt() ensures a perfectly uniform distribution across the circle's area
-            double dist = safeBoundary * Math.sqrt(rand.nextDouble());
+            // distribution around the center
+            double centeringFactor = 0.75; // 0.5 = uniform, 1 = heavily centered
+            double dist = safeBoundary * Math.pow(rand.nextDouble(), centeringFactor);
 
             int cx = startX + Mth.floor(Math.cos(angle) * dist);
             int cz = startZ + Mth.floor(Math.sin(angle) * dist);
-            int cy = Mth.clamp(anchorY + (-ySpread + rand.nextInt((ySpread * 2) + 1)), MIN_Y, MAX_Y);
+            int currentMinY = Config.FLOATING_ISLANDS_MIN_Y.getAsInt();
+            int currentMaxY = Config.FLOATING_ISLANDS_MAX_Y.getAsInt();
+            int cy = Mth.clamp(anchorY + (-ySpread + rand.nextInt((ySpread * 2) + 1)), currentMinY, currentMaxY);
 
-            if (!overlapsAny(cx, cy, cz, diameter, allIslands)) {
+
+            if (!overlapsAny(cx, cz, diameter, allIslands)) {
                 return new int[]{cx, cy, cz};
             }
         }
@@ -285,23 +277,21 @@ public class FloatingIslandStructure extends Structure {
      * would overlap too much with any already-placed island.
      * Minimum allowed distance = 60% of the sum of both radii.
      */
-    private static boolean overlapsAny(int cx, int cy, int cz, int diameter, List<int[]> placed) {
-        int candidateRadius = diameter / 2;
-        for (int[] existing : placed) {
-            int ex = existing[0], ey = existing[1], ez = existing[2], eDiameter = existing[3];
-            int existingRadius = eDiameter / 2;
+    private boolean overlapsAny(int cx, int cz, int diameter, List<int[]> allIslands) {
+        double radius = diameter / 2.0;
 
-            // Calculate true 3D distance
-            double dx = cx - ex;
-            double dy = cy - ey;
-            double dz = cz - ez;
-            double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        for (int[] island : allIslands) {
+            int otherX = island[0];
+            int otherZ = island[2]; // Index 2 is the Z coordinate
 
-            // Minimum allowed distance (adjust 0.7 if you want more vertical/horizontal breathing room)
-            double minDist = (candidateRadius + existingRadius) * 0.7;
+            // Calculate squared 2D distance (faster than using Math.sqrt)
+            double distanceSq = Math.pow(cx - otherX, 2) + Math.pow(cz - otherZ, 2);
 
-            if (dist < minDist) {
-                return true;
+            // If islands can have different sizes, you'll need to read the other island's diameter from the array here.
+            double minDistance = radius + radius;
+
+            if (distanceSq < (minDistance * minDistance)) {
+                return true; // Overlap detected on the X/Z plane
             }
         }
         return false;
@@ -329,16 +319,16 @@ public class FloatingIslandStructure extends Structure {
         // Start bridges from 30% of the radius — well inside the island body
         // (before noise distortion), so they embed into the island rather than
         // floating at the edge.
-        int fromOffset = Math.max(2, (int) (fromDiameter * 0.15));
-        int toOffset = Math.max(2, (int) (toDiameter * 0.15));
+        int fromOffset = Math.max(2, (int) (fromDiameter * 0.25));
+        int toOffset = Math.max(2, (int) (toDiameter * 0.25));
 
         BlockPos bridgeStart = new BlockPos(
                 fromX + Mth.floor(nx * fromOffset),
-                fromY,
+                fromY -1,
                 fromZ + Mth.floor(nz * fromOffset));
         BlockPos bridgeEnd = new BlockPos(
                 toX - Mth.floor(nx * toOffset),
-                toY,
+                toY -1,
                 toZ - Mth.floor(nz * toOffset));
 
         BoundingBox bridgeBox = FloatingIslandBridgePiece.createBoundingBox(bridgeStart, bridgeEnd);

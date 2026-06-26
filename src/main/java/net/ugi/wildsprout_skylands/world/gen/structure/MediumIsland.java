@@ -3,6 +3,7 @@ package net.ugi.wildsprout_skylands.world.gen.structure;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.chunk.ChunkGenerator;
 
 import java.util.List;
 
@@ -12,7 +13,7 @@ public class MediumIsland extends AbstractIsland {
     }
 
     @Override
-    protected void decorate(WorldGenLevel world, BlockPos.MutableBlockPos pos, List<BlockPos> surfaceBlocks, RandomSource random) {
+    protected void decorate(WorldGenLevel world, ChunkGenerator generator, BlockPos.MutableBlockPos pos, List<BlockPos> surfaceBlocks, RandomSource random) {
         placeMediumVegetation(world, pos, surfaceBlocks, random);
     }
 }

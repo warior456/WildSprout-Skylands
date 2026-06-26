@@ -13,7 +13,6 @@ import net.ugi.wildsprout_skylands.WildsproutSkylands;
 
 public class ModStructureSets {
     public static final ResourceKey<StructureSet> FLOATING_ISLAND = registerKey("floating_island");
-    public static final ResourceKey<StructureSet> GLASS_BALL_CLUSTER = registerKey("glass_ball_cluster");
 
     public static void bootstrap(BootstrapContext<StructureSet> context) {
         HolderGetter<Structure> structureGetter = context.lookup(Registries.STRUCTURE);
@@ -21,10 +20,10 @@ public class ModStructureSets {
         context.register(FLOATING_ISLAND, new StructureSet(
                 structureGetter.getOrThrow(ModStructures.FLOATING_ISLAND),
                 new RandomSpreadStructurePlacement(
-                        24, // spacing
-                        8, // separation
+                        64, // spacing
+                        16, // separation
                         RandomSpreadType.LINEAR,
-                        14357620 // salt
+                        845621820 // salt
                 )
         ));
 

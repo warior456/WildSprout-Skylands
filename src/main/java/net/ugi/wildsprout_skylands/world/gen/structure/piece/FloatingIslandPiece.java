@@ -101,7 +101,6 @@ public class FloatingIslandPiece extends StructurePiece {
         RandomSource surfaceNoiseRandom = RandomSource.create(this.shapeSeed ^ 69);
         NormalNoise surfaceNoise = NormalNoise.create(surfaceNoiseRandom, -2, new double[]{1.0, 0.5});
 
-        island.generateChunk(world, minX, maxX, minY, maxY, minZ, maxZ,
-                shapeNoise, surfaceNoise, random);
+        island.generateChunk(world, chunkGenerator, minX, maxX, minY,maxY, minZ, maxZ, shapeNoise, surfaceNoise, random);
     }
 }

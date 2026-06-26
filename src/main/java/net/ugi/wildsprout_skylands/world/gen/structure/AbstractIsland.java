@@ -1,17 +1,20 @@
 package net.ugi.wildsprout_skylands.world.gen.structure;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.data.worldgen.features.TreeFeatures;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.VineBlock;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.properties.BooleanProperty;
+import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.levelgen.synth.NormalNoise;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import net.minecraft.world.level.biome.Biomes;
 
 public abstract class AbstractIsland {
     private static final double NOISE_SCALE = 0.09;
@@ -32,6 +35,9 @@ public abstract class AbstractIsland {
         this.type = type;
         this.lobes = createLobes(RandomSource.create(shapeSeed), diameter, minLobes, maxLobes);
     }
+
+    //decorator
+    protected abstract void decorate(WorldGenLevel world, ChunkGenerator generator, BlockPos.MutableBlockPos pos, List<BlockPos> surfaceBlocks, RandomSource random);
 
     public boolean shouldFill(int worldX, int worldY, int worldZ,
                               int localX, int localY, int localZ,
@@ -58,6 +64,8 @@ public abstract class AbstractIsland {
         return density + (noiseValue * NOISE_STRENGTH) > 0.0;
     }
 
+
+
     public int getDepthFromSurface(int worldX, int worldY, int worldZ,
                                    int localX, int localY, int localZ,
                                    NormalNoise shapeNoise, NormalNoise surfaceNoise) {
@@ -69,15 +77,15 @@ public abstract class AbstractIsland {
         return 6;
     }
 
-    public void generateChunk(WorldGenLevel world,
+
+    public void generateChunk(WorldGenLevel world, ChunkGenerator generator,
                               int minX, int maxX, int minY, int maxY, int minZ, int maxZ,
                               NormalNoise shapeNoise, NormalNoise surfaceNoise,
                               RandomSource random) {
         List<BlockPos> surfaceBlocks = placeBlocks(world, minX, maxX, minY, maxY, minZ, maxZ, shapeNoise, surfaceNoise);
 
         BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
-        this.decorate(world, mutablePos, surfaceBlocks, random);
-
+        this.decorate(world, generator, mutablePos, surfaceBlocks, random);
     }
 
     private List<BlockPos> placeBlocks(WorldGenLevel world,
@@ -211,7 +219,8 @@ public abstract class AbstractIsland {
         return lobes;
     }
 
-    protected static void placeBigVegetation(WorldGenLevel world, BlockPos.MutableBlockPos pos, List<BlockPos> surfaceBlocks, RandomSource random) {
+    // Added ChunkGenerator parameter
+    protected static void placeBigVegetation(WorldGenLevel world, ChunkGenerator generator, BlockPos.MutableBlockPos pos, List<BlockPos> surfaceBlocks, RandomSource random) {
         for (BlockPos surface : surfaceBlocks) {
             pos.set(surface.getX(), surface.getY() + 1, surface.getZ());
             if (!world.getBlockState(pos).isAir()) continue;
@@ -235,10 +244,8 @@ public abstract class AbstractIsland {
                     default -> Blocks.AZURE_BLUET.defaultBlockState();
                 };
                 world.setBlock(pos, flower, 2);
-            } else if (roll < 94) {
-                world.setBlock(pos, Blocks.MOSS_CARPET.defaultBlockState(), 2);
             } else {
-                placeSmallTree(world, surface, random);
+                placeSmallTree(world, generator, surface.above(), random);
             }
         }
     }
@@ -266,14 +273,10 @@ public abstract class AbstractIsland {
         }
     }
 
-    protected static void placeBigFeature(WorldGenLevel world, BlockPos.MutableBlockPos pos, List<BlockPos> surfaceBlocks, RandomSource random) {
-        if (surfaceBlocks.isEmpty() || random.nextInt(4) != 0) return;
-        BlockPos anchor = surfaceBlocks.get(random.nextInt(surfaceBlocks.size()));
-        if (random.nextBoolean()) {
-            placeSmallTree(world, anchor, random);
-        } else {
-            placeRockFeature(world, pos, anchor, random);
-        }
+    // Added ChunkGenerator parameter
+    protected void placeFeatures(WorldGenLevel world, ChunkGenerator generator, BlockPos.MutableBlockPos pos, List<BlockPos> surfaceBlocks, RandomSource random) {
+
+
     }
 
     protected static void placeRockFeature(WorldGenLevel world, BlockPos.MutableBlockPos pos, BlockPos base, RandomSource random) {
@@ -293,48 +296,49 @@ public abstract class AbstractIsland {
         }
     }
 
-    protected static void placeSmallTree(WorldGenLevel world, BlockPos base, RandomSource random) {
-        int trunkHeight = 3 + random.nextInt(3);
-        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-        for (int dy = 1; dy <= trunkHeight + 2; dy++) {
-            pos.set(base.getX(), base.getY() + dy, base.getZ());
-            if (!world.getBlockState(pos).isAir() && !world.getBlockState(pos).canBeReplaced()) return;
-        }
-        for (int dy = 1; dy <= trunkHeight; dy++) {
-            pos.set(base.getX(), base.getY() + dy, base.getZ());
-            world.setBlock(pos, Blocks.OAK_LOG.defaultBlockState(), 2);
-        }
-        int leafCenterY = base.getY() + trunkHeight;
-        int leafRadius = 2;
-        for (int dx = -leafRadius; dx <= leafRadius; dx++) {
-            for (int dy = -1; dy <= 2; dy++) {
-                for (int dz = -leafRadius; dz <= leafRadius; dz++) {
-                    int distSq = dx * dx + dy * dy + dz * dz;
-                    if (distSq > leafRadius * leafRadius + 1) continue;
-                    if (dx == 0 && dz == 0 && dy <= 0) continue;
-                    pos.set(base.getX() + dx, leafCenterY + dy, base.getZ() + dz);
-                    BlockState existing = world.getBlockState(pos);
-                    if (existing.isAir() || existing.canBeReplaced()) {
-                        world.setBlock(pos, Blocks.OAK_LEAVES.defaultBlockState(), 2);
-                    }
-                }
+
+    protected static void placeSmallTree(WorldGenLevel world, ChunkGenerator generator, BlockPos base, RandomSource random) {
+        var biome = world.getBiome(base);
+        var biomeKey = biome.unwrapKey().orElse(null);
+        // Default spawn chance and tree type
+        float spawnChance = 0.5f; // 50% chance to place any tree
+        var treeFeature = TreeFeatures.OAK;
+        if (biomeKey != null) {
+            // Use proper biome keys for comparison
+            if (biomeKey == Biomes.PLAINS || biomeKey == Biomes.DESERT) {
+                spawnChance = 0.1f;
+            } else if (biomeKey == Biomes.FOREST) {
+                spawnChance = 0.8f;
+                if (random.nextFloat() < 0.8f) treeFeature = TreeFeatures.BIRCH;
+            } else if (biomeKey == Biomes.TAIGA) {
+                spawnChance = 0.7f;
+                if (random.nextFloat() < 0.7f) treeFeature = TreeFeatures.SPRUCE;
+            } else if (biomeKey == Biomes.JUNGLE) {
+                spawnChance = 0.6f;
+                if (random.nextFloat() < 0.6f) treeFeature = TreeFeatures.JUNGLE_TREE;
+            } else if (biomeKey == Biomes.SAVANNA) {
+                spawnChance = 0.5f;
+                if (random.nextFloat() < 0.5f) treeFeature = TreeFeatures.ACACIA;
+            } else if (biomeKey == Biomes.DARK_FOREST) {
+                spawnChance = 0.9f;
+                if (random.nextFloat() < 0.9f) treeFeature = TreeFeatures.DARK_OAK;
             }
         }
+        if (random.nextFloat() > spawnChance) return;
+        var selectedFeature = treeFeature;
+        world.registryAccess()
+                .registry(Registries.CONFIGURED_FEATURE)
+                .flatMap(registry -> registry.getHolder(selectedFeature))
+                .ifPresent(holder -> holder.value().place(world, generator, random, base));
     }
 
-    public int getDiameter() {
-        return diameter;
-    }
 
-    public BlockPos getCenter() {
-        return center;
-    }
 
     public IslandType getType() {
         return type;
     }
 
-    protected abstract void decorate(WorldGenLevel world, BlockPos.MutableBlockPos pos, List<BlockPos> surfaceBlocks, RandomSource random);
+
 
     private static final class Lobe {
         final double offsetX, offsetY, offsetZ;
