@@ -20,10 +20,10 @@ public class ModStructureSets {
         context.register(FLOATING_ISLAND, new StructureSet(
                 structureGetter.getOrThrow(ModStructures.FLOATING_ISLAND),
                 new RandomSpreadStructurePlacement(
-                        64, // spacing
-                        16, // separation
+                        53, // spacing
+                        17, // separation
                         RandomSpreadType.LINEAR,
-                        845621820 // salt
+                        74378392 // salt
                 )
         ));
 
